@@ -1,0 +1,7 @@
+*~
+*#
+Lab1/__*
+Lab1/data/*
+!Lab1/data/README
+*.ipynb_checkpoints*
+*.out.png
