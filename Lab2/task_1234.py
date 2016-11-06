@@ -9,7 +9,7 @@ MODE_FUNDAMENTAL = 1
 MODE_FUNDAMENTAL_NORMALIZED = 2
 MODE_ESSENTIAL = 3
 
-mode = MODE_FUNDAMENTAL_NORMALIZED
+mode = MODE_ESSENTIAL
 pick_n_points = 15
 
 np.random.seed(42)
@@ -23,6 +23,10 @@ p2 = q[1,0].T
 img1 = scipy.ndimage.imread(("data/kronan1.JPG"))
 img2 = scipy.ndimage.imread(("data/kronan2.JPG"))
 zoom_factor = 0.5
+
+# Load K matrix
+K = scipy.io.loadmat("data/compEx3data.mat")['K']
+K_inv = np.linalg.inv(K)
 
 if mode == MODE_FUNDAMENTAL:
     # Compute fundamental matrix
@@ -63,7 +67,21 @@ elif mode == MODE_FUNDAMENTAL_NORMALIZED:
     show(F)
 
 elif mode == MODE_ESSENTIAL:
-    pass
+    print("K:")
+    show(K)
+
+    p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
+    p2_normalized = np.einsum('xy,zy->zx', K_inv, p2)
+
+    # Compute fundamental matrix
+    E, choice = calculate_fundamental(p1_normalized, p2_normalized, pick_n_points, essential=True)
+    print("This is E:")
+    show(E)
+
+    F = K_inv.T @ E @ K_inv
+    F = F/F[2,2]
+    print("This is F:")
+    show(F)
 
 testpoints = np.random.choice(p1.shape[0], 20, replace=False)
 if pick_n_points is not None:
