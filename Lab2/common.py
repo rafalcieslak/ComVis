@@ -15,6 +15,14 @@ def rank_reduce(A):
     S[-1] = 0
     return U.dot(np.diag(S)).dot(V)
 
+def rank_reduce_essential(A):
+    assert(A.shape == (3,3))
+    U, S, V = np.linalg.svd(A)
+    a, b, c = S
+    q = 0.5 * (a+b)
+    S = np.diag((q,q,0))
+    return U.dot(S).dot(V)
+
 # A helper function for merging three single-channel images into an RGB image
 def combine_channels(ch1, ch2, ch3):
     return np.array([ch1.T, ch2.T, ch3.T]).T
@@ -27,7 +35,7 @@ def per_channel(func, image):
 def zoom_3ch(image, factor):
     return per_channel(lambda x : scipy.ndimage.zoom(x, factor, order=1), image)
 
-def calculate_fundamental(p1, p2, n=None):
+def calculate_fundamental(p1, p2, n=None, essential=False):
     if n is None:
         n = p1.shape[0]
     points_combined = np.hstack((p1, p2))
@@ -43,7 +51,10 @@ def calculate_fundamental(p1, p2, n=None):
     # Solve Af=0 with least squares, constarining |f|=1
     U, S, V = np.linalg.svd(A)
     F = V[-1,:].reshape(3,3)
-    F = rank_reduce(F)
+    if essential:
+        F = rank_reduce_essential(F)
+    else:
+        F = rank_reduce(F)
     F = F/F[2,2]
     return F, choice
 
