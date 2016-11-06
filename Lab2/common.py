@@ -44,3 +44,6 @@ def calculate_fundamental(p1, p2, n=None):
     F = rank_reduce(F)
     F = F/F[2,2]
     return F, choice
+
+
+
