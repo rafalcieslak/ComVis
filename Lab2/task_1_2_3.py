@@ -24,17 +24,29 @@ img1 = scipy.ndimage.imread(("data/kronan1.JPG"))
 img2 = scipy.ndimage.imread(("data/kronan2.JPG"))
 zoom_factor = 0.5
 
-if mode == MODE_FUNDAMENTAL_NORMALIZED:
+if mode == MODE_FUNDAMENTAL:
+    # Compute fundamental matrix
+    F, choice = calculate_fundamental(p1, p2, pick_n_points)
+
+    print("This is F:")
+    show(F)
+
+    # Ask openCV to compute on the same points, for comparison
+    F2, _ = cv2.findFundamentalMat(p1[choice][:,0:2], p2[choice][:,0:2], cv2.FM_8POINT)
+    print("F according to openCV")
+    show(F2)
+
+elif mode == MODE_FUNDAMENTAL_NORMALIZED:
     T1, T2 = prepare_normalization_transforms(p1,p2)
-    
+
     print("T1:")
     show(T1)
     print("T2:")
     show(T2)
-    
+
     p1_normalized = np.einsum('xy,zy->zx', T1, p1)
     p2_normalized = np.einsum('xy,zy->zx', T2, p2)
-    
+
     # Compute fundamental matrix
     F, choice = calculate_fundamental(p1_normalized, p2_normalized, pick_n_points)
     print("This is F:")
@@ -45,23 +57,10 @@ if mode == MODE_FUNDAMENTAL_NORMALIZED:
     print("F according to openCV")
     show(F2)
 
-    
     F = T2.T @ F @ T1
     F = F/F[2,2]
     print("This is F after denormalizing:")
     show(F)
-    
-elif mode == MODE_FUNDAMENTAL:
-    # Compute fundamental matrix
-    F, choice = calculate_fundamental(p1, p2, pick_n_points)
-
-    print("This is F:")
-    show(F)
-    
-    # Ask openCV to compute on the same points, for comparison
-    F2, _ = cv2.findFundamentalMat(p1[choice][:,0:2], p2[choice][:,0:2], cv2.FM_8POINT)
-    print("F according to openCV")
-    show(F2)
 
 elif mode == MODE_ESSENTIAL:
     pass
