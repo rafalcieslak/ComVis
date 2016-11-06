@@ -3,5 +3,8 @@
 Lab1/__*
 Lab1/data/*
 !Lab1/data/README
+Lab2/__*
+Lab2/data/*
+!Lab2/data/README
 *.ipynb_checkpoints*
 *.out.png
