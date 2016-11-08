@@ -100,6 +100,9 @@ def get_Ps_from_F(F):
     P2_4 = np.hstack([U @ W.T @ Vt, -u3])
     return P1, [P2_1, P2_2, P2_3, P2_4]
 
+
+# As hinted by http://users.cecs.anu.edu.au/~hartley/Papers/CVPR99-tutorial/tut_4up.pdf
+# around page 11
 def get_Ps_from_F_alternative(F):
     U,S,Vt = np.linalg.svd(F)
     # show(F)

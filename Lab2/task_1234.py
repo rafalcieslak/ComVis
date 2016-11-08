@@ -122,7 +122,8 @@ if triangulation:
     
     results = np.array([triangulate(P1,P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
     print(results[n])
-    results = [(x*1/w,y*0.2/w,z*100/w) for x,y,z,w in results]
+    scale = np.array([1, 0.2, 100.0])
+    results = [(x*scale[0]/w,y*scale[1]/w,z*scale[2]/w) for x,y,z,w in results]
     
     #print(p1[:,0:2].shape)
     #compare = cv2.triangulatePoints(P1, P2, p1[:,0:2].T, p2[:,0:2].T).T
