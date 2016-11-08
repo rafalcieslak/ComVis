@@ -8,3 +8,4 @@ Lab2/data/*
 !Lab2/data/README
 *.ipynb_checkpoints*
 *.out.png
+*out.ply

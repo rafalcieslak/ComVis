@@ -3,6 +3,10 @@ import scipy.linalg
 import numpy as np
 import colorsys
 import cv2
+from plyfile import PlyData, PlyElement
+
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
 
 # A helper printer which I use instead of print for numpy arrays.
 # I don't know why, but print clearly ignores numpy output settings
@@ -76,6 +80,73 @@ def prepare_normalization_transforms(p1, p2):
                      0,         0,         1]).reshape(3,3)
     return T1, T2
 
+def get_Ps_from_F(F):
+    U,S,Vt = np.linalg.svd(F)
+    print("factorisation")
+    show(F)
+    show(S)
+    show(U @ np.diag(S) @ Vt)
+    u3 = U[2].reshape((3,1))
+    
+    W = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 1]])
+    P1 = np.asarray([[1,0,0,0],
+                     [0,1,0,0],
+                     [0,0,1,0]])
+    P2_1 = np.hstack([U @ W   @ Vt,  u3])
+    P2_2 = np.hstack([U @ W   @ Vt, -u3])
+    P2_3 = np.hstack([U @ W.T @ Vt,  u3])
+    P2_4 = np.hstack([U @ W.T @ Vt, -u3])
+    return P1, [P2_1, P2_2, P2_3, P2_4]
+
+def get_Ps_from_F_alternative(F):
+    U,S,Vt = np.linalg.svd(F)
+    # show(F)
+    # show(S)
+    # show(U @ np.diag(S) @ Vt)
+    u3 = U[2].reshape((3,1))
+    
+    W = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 1]])
+    Z = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 0]])
+    P1 = np.asarray([[1,0,0,0],
+                     [0,1,0,0],
+                     [0,0,1,0]])
+    UZUt = U @ Z @ U.T
+    UZDVt = U @ Z @ np.diag(S) @ Vt
+    t = np.array([UZUt[2,1], UZUt[0,2], UZUt[1,0]])
+    M = UZDVt
+    # show(UZUt)
+    # show(t)
+    # show(M)
+    P2 = np.hstack([M,t.reshape(3,1)])
+    # show(P2)
+    return P1, [P2]
+    
+    
+def triangulate(P1, P2, p1, p2):
+    x1,y1,_ = p1/p1[2]
+    x2,y2,_ = p2/p2[2]
+    A1 = x1*P1[2,:] - P1[0,:]
+    A2 = y1*P1[2,:] - P1[1,:]
+    A3 = x2*P2[2,:] - P2[0,:]
+    A4 = y2*P2[2,:] - P2[1,:]
+    A = np.vstack([A1,A2,A3,A4])
+    # print("A")
+    # show(A1)
+    # show(A)
+    U,S,V = np.linalg.svd(A)
+    X = V[-1,:]
+    q = A @ X
+    # print("A dot X")
+    # show(q)
+    return X
+    
+
 def draw_points_and_epipolar(img1, img2, p1, p2, F, zoom_factor=1.0):
     line_width = int(1.5 / zoom_factor)
     circle_radius = int(8 / zoom_factor)
@@ -97,3 +168,34 @@ def draw_points_and_epipolar(img1, img2, p1, p2, F, zoom_factor=1.0):
         x2,y2 = cols, int(-(c+a*cols)/b)
         img1 = cv2.line(img1, (x1,y1), (x2,y2), color,line_width)
     return img1, img2
+
+def save_to_ply(points, filename):
+    points = np.array(points, dtype=[('x','f4'), ('y','f4'),('z', 'f4')])
+    el = PlyElement.describe(points, 'vertex')
+    PlyData([el]).write(filename)
+
+# Creates a simple 3d plot from a set of points. Ensures that a uniform scaling
+# is applied to all axes, so that 3d spatial data is not stretched
+def plot_points(data3d):
+    C = np.array([0,0,0])
+    fig = plt.figure()
+    sp = fig.add_subplot(111, projection='3d')
+    # sp.axis('equal') # Does not work for 3d.
+    X,Y,Z = data3d[:,0], data3d[:,1], data3d[:,2]
+    """
+    X = np.insert(X, 0, C[0])
+    Y = np.insert(Y, 0, C[1])
+    Z = np.insert(Z, 0, C[2])
+    """ 
+    # Correction for unit scaling
+    max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max()*0.5
+    mid_x = (X.max()+X.min()) * 0.5
+    mid_y = (Y.max()+Y.min()) * 0.5
+    mid_z = (Z.max()+Z.min()) * 0.5
+    sp.set_xlim(mid_x - max_range, mid_x + max_range)
+    sp.set_ylim(mid_y - max_range, mid_y + max_range)
+    sp.set_zlim(mid_z - max_range, mid_z + max_range)
+    
+    sp.scatter(X[1:],Y[1:],Z[1:], c='b', marker='o', s=2)
+    # sp.scatter(C[0], C[1], C[2], c='r', marker='x')
+    plt.show()
