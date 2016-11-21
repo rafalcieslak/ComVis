@@ -9,3 +9,9 @@ Lab2/data/*
 *.ipynb_checkpoints*
 *.out.png
 *out.ply
+*__pycache__*
+*.pyc
+*out.obj
+Lab3/left.png
+Lab3/data/*
+!Lab3/data/README
