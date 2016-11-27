@@ -1,6 +1,7 @@
 import scipy
 import scipy.ndimage
 import numpy as np
+import cv2
 from .show import show
 
 # A helper function for merging three single-channel images into an RGB image
@@ -174,6 +175,11 @@ def img_gen_mask_ones(img):
         return np.ones((coords.shape[0], 3))
     return img_gen(one_func, img.shape)
 
+# Normalizes values into range [0,1]
+def rescale(img):
+    min, max = img.min(), img.max()
+    return (img-min)/(max-min)
+
 # Sigma1 is used for derivative calculation.
 # Sigma2 corresponds to the gaussian window stdev
 def harris_corner_response(I, alpha, sigma1, sigma2):
@@ -187,4 +193,4 @@ def harris_corner_response(I, alpha, sigma1, sigma2):
     gIyy = scipy.ndimage.gaussian_filter(Iyy, sigma2)
     det = gIxx * gIyy - gIxy * gIxy
     tr = gIxx + gIyy
-    return det - alpha * tr
+    return det - alpha * tr / (255*255)
