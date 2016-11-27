@@ -182,7 +182,9 @@ def rescale(img):
 
 # Sigma1 is used for derivative calculation.
 # Sigma2 corresponds to the gaussian window stdev
-def harris_corner_response(I, alpha, sigma1, sigma2):
+def harris_corner_response(I, alpha=0.05, sigma1=None, sigma2=4):
+    if sigma1 is None:
+        sigma1 = 0.7 * sigma2
     Ix = scipy.ndimage.gaussian_filter(I, (0, sigma1), order=(0,1))
     Iy = scipy.ndimage.gaussian_filter(I, (sigma1, 0), order=(1,0))
     Ixx = Ix * Ix
@@ -193,11 +195,11 @@ def harris_corner_response(I, alpha, sigma1, sigma2):
     gIyy = scipy.ndimage.gaussian_filter(Iyy, sigma2)
     det = gIxx * gIyy - gIxy * gIxy
     tr = gIxx + gIyy
-    return det - alpha * tr / (255*255)
+    return det*(256*256) - alpha * tr
 
 # For a 1-channel 2d image, returns a list of tuples x,y,v, where x and y are
 # coordinates of a local maxima, and v is the value at the point
-def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.03):
+def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.003):
     # Find local maximas
     i_max = scipy.ndimage.maximum_filter(image, neighbourhood_size)
     maxima = (image == i_max)
@@ -205,7 +207,7 @@ def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.
     i_min = scipy.ndimage.minimum_filter(image, neighbourhood_size)
     d = ((i_max - i_min) > flat_treshold)
     maxima[d == 0] = False
-
+    # Get coordinates of the maximas
     labeled_R, n_obj = scipy.ndimage.label(maxima)
     slices = scipy.ndimage.find_objects(labeled_R)
     print("Found %d corners" % n_obj)
@@ -218,25 +220,79 @@ def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.
         points.append((x, y, image[y,x]))
     return points
 
+def harris_corners(I, sigma):
+    R = harris_corner_response(I, sigma2=sigma)
+    # Scale response function to stay sigma-invariant. Obviously, the scaling
+    # factor should be a power of sigma, but I have no idea why 5th power
+    # works. Quick calculation suggests that either 2 or 4 should be the right
+    # choice, but it's easy to verify that 5 actually works much beter and is
+    # apparently the perfect choice.
+    R = R * np.power(sigma, 5)
+    points = find_local_maximas_with_values(R)
+    # Append sigma to all points
+    return [(x,y,r,sigma) for x,y,r in points], R
+
 # Adaptive non-maximal suppresion.
 # Input: List of tuples x,y,v where x and y are coordinates and v is the value at point
 def ANMS(pointlist, N):
     pointlist = np.asarray(pointlist)
     print(pointlist.shape)
     radii = []
-    for x,y,v in pointlist:
+    for x,y,v,s in pointlist:
         # Find the distance to the nearest point with a higher value
         # First, get indices where v is larger than ours
         # print(pointlist[:,2])
         q = (pointlist[:,2] > v).nonzero()
         p = pointlist[q,:][0,:,0:2]
         if p.shape[0] == 0:
-            r = 999999999999;
+            r = 999999999999; # Global maximum
         else:
             diffs = p - np.array([x,y])
             r = (diffs**2).sum(axis=1).min()
         radii.append(r)
+    N = min(len(radii)-1, N)
     args = np.argpartition(-np.asarray(radii), N)[:N]
     cutoff = np.asarray(radii)[args[-1]]
     print("Cutoff radius for ANMS: %f" % np.sqrt(cutoff))
     return pointlist[args]
+
+# Harris-laplace scale-invariant corner detector
+def harris_laplace(I):
+    sigma_begin = 1.5
+    sigma_step = 1.2
+    sigma_n = 13
+    sigmas = np.power(sigma_step, np.arange(sigma_n)) * sigma_begin
+
+    # Run harris corners detector for all sigma values, collect results
+    points, allpoints, Rs = [], [], []
+    for s in sigmas:
+        p, R = harris_corners(I, s)
+        allpoints += p
+        points.append(p)
+        Rs.append(R)
+    assert(len(points) == sigma_n)
+
+    print("Before selecting scale-space local maximas: %d points" % len(allpoints))
+    
+    filtered_points = []
+    # Now, filter the points to only include those that are local maximas in
+    # scale space as well. For convenience, add zeroed arrays to end end
+    # beginning, so there are no corner cases when comparing scales
+    Rs = [np.zeros_like(Rs[0])] + Rs + [np.zeros_like(Rs[-1])]
+    # This entire loop might be rewritten numpy-style, but it is tricky to run
+    # the maxima filter only in the third dimension. Thus, for simplicity, this
+    # loop is explicit. It's not costing much anyway, since usually there is not
+    # much (< 20000) candidate points anyway.
+    for i in range(0,sigma_n):
+        sigma = sigmas[i]
+        Ra, R, Rb = Rs[i], Rs[i+1], Rs[i+2]
+        for p in points[i]:
+            x,y,v,_ = p
+            # If neighbouring scales have a smaller value at (x,y)...
+            if v > Ra[y,x] and v > Rb[y,x]:
+                # ... then this point is a local maxima in scale-space as well.
+                filtered_points.append(p)
+
+    print("After selecting scale-space local maximas: %d points" % len(filtered_points))
+    
+    return filtered_points
