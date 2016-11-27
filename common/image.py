@@ -78,7 +78,7 @@ class HomographyApplier:
         dataH = np.einsum('ba,na->nb', self.H, dataH)
         data = pointlist_from_homog(dataH)
         return data
-    
+
 # Applies an arbitrary image transformation. The function which is
 # passed as the second argument will be called with a long list of
 # coordinates. It must return an array of identical size, but it may
@@ -155,7 +155,7 @@ def image_bounds_factorize(BB):
     ysize = int(ymax - ymin)
     offset = np.array([xmin, ymin])
     return (ysize,xsize), offset
-    
+
 def img_gen_mask_smooth(img):
     def one_func(coords):
         size = np.array([img.shape[1], img.shape[0]])
@@ -194,3 +194,49 @@ def harris_corner_response(I, alpha, sigma1, sigma2):
     det = gIxx * gIyy - gIxy * gIxy
     tr = gIxx + gIyy
     return det - alpha * tr / (255*255)
+
+# For a 1-channel 2d image, returns a list of tuples x,y,v, where x and y are
+# coordinates of a local maxima, and v is the value at the point
+def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.03):
+    # Find local maximas
+    i_max = scipy.ndimage.maximum_filter(image, neighbourhood_size)
+    maxima = (image == i_max)
+    # Clean flat regions
+    i_min = scipy.ndimage.minimum_filter(image, neighbourhood_size)
+    d = ((i_max - i_min) > flat_treshold)
+    maxima[d == 0] = False
+
+    labeled_R, n_obj = scipy.ndimage.label(maxima)
+    slices = scipy.ndimage.find_objects(labeled_R)
+    print("Found %d corners" % n_obj)
+
+    # Sample the response function at these points
+    points = []
+    for dy,dx in slices:
+        x = (dx.start + dx.stop - 1)/2
+        y = (dy.start + dy.stop - 1)/2
+        points.append((x, y, image[y,x]))
+    return points
+
+# Adaptive non-maximal suppresion.
+# Input: List of tuples x,y,v where x and y are coordinates and v is the value at point
+def ANMS(pointlist, N):
+    pointlist = np.asarray(pointlist)
+    print(pointlist.shape)
+    radii = []
+    for x,y,v in pointlist:
+        # Find the distance to the nearest point with a higher value
+        # First, get indices where v is larger than ours
+        # print(pointlist[:,2])
+        q = (pointlist[:,2] > v).nonzero()
+        p = pointlist[q,:][0,:,0:2]
+        if p.shape[0] == 0:
+            r = 999999999999;
+        else:
+            diffs = p - np.array([x,y])
+            r = (diffs**2).sum(axis=1).min()
+        radii.append(r)
+    args = np.argpartition(-np.asarray(radii), N)[:N]
+    cutoff = np.asarray(radii)[args[-1]]
+    print("Cutoff radius for ANMS: %f" % np.sqrt(cutoff))
+    return pointlist[args]
