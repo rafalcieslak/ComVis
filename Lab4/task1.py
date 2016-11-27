@@ -13,9 +13,14 @@ data = {
     },
     "nd": {
         "file": "data/Notre Dame/1_o.jpg",
-        "zoom": 0.6,
+        "zoom": 0.4,
+        "maxima_treshold": 0.1,
+    },
+    "eg": {
+        "file": "data/Episcopal Gaudi/3743214471_1b5bbfda98_o.jpg",
+        "zoom": 0.4,
         "maxima_treshold": 0.5,
-    }
+    },
 }
 
 data = data[dataset]
@@ -50,16 +55,21 @@ d = ((R_max - R_min) > flat_treshold)
 maxima[d == 0] = False
 
 labeled_R, n_obj = scipy.ndimage.label(maxima)
-slices = scipy.ndimage.find_objects(labeled_R)
+points = scipy.ndimage.find_objects(labeled_R)
 print("Found %d corners" % n_obj)
 
 R2, R2l = rescale(R), np.zeros_like(R)
 R2l[maxima > 0] = 1
 R2 = combine_channels(R2, np.zeros_like(R2), R2l)
+I2 = combine_channels(I,I,I).copy()
 
+# Mark features
+for dy,dx in points:
+    x = (dx.start + dx.stop - 1)/2
+    y = (dy.start + dy.stop - 1)/2 
+    I2 = cv2.circle(I2, (int(x),int(y)), 4, (0,0,1))
 
-cv2.imshow('I', I)
-cv2.imshow('R', rescale(R))
+cv2.imshow('I2', I2)
 cv2.imshow('R2', R2)
 
 while cv2.waitKey(5) & 0xff != 27:
