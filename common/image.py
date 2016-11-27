@@ -173,3 +173,18 @@ def img_gen_mask_ones(img):
     def one_func(coords):
         return np.ones((coords.shape[0], 3))
     return img_gen(one_func, img.shape)
+
+# Sigma1 is used for derivative calculation.
+# Sigma2 corresponds to the gaussian window stdev
+def harris_corner_response(I, alpha, sigma1, sigma2):
+    Ix = scipy.ndimage.gaussian_filter(I, (0, sigma1), order=(0,1))
+    Iy = scipy.ndimage.gaussian_filter(I, (sigma1, 0), order=(1,0))
+    Ixx = Ix * Ix
+    Ixy = Ix * Iy
+    Iyy = Iy * Iy
+    gIxx = scipy.ndimage.gaussian_filter(Ixx, sigma2)
+    gIxy = scipy.ndimage.gaussian_filter(Ixy, sigma2)
+    gIyy = scipy.ndimage.gaussian_filter(Iyy, sigma2)
+    det = gIxx * gIyy - gIxy * gIxy
+    tr = gIxx + gIyy
+    return det - alpha * tr

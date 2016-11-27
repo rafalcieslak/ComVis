@@ -15,3 +15,6 @@ Lab2/data/*
 Lab3/left.png
 Lab3/data/*
 !Lab3/data/README
+Lab4/data/*
+!Lab4/data/README
+!Lab4/data/test.png
