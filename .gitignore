@@ -1,11 +1,8 @@
 *~
 *#
-Lab1/__*
-Lab1/data/*
-!Lab1/data/README
-Lab2/__*
-Lab2/data/*
-!Lab2/data/README
+Lab*/__*
+Lab*/data/*
+!Lab*/data/README
 *.ipynb_checkpoints*
 *.out.png
 *out.ply
@@ -13,8 +10,7 @@ Lab2/data/*
 *.pyc
 *out.obj
 Lab3/left.png
-Lab3/data/*
-!Lab3/data/README
-Lab4/data/*
-!Lab4/data/README
 !Lab4/data/test.png
+!Lab5/data/test.png
+*.feat
+*.descrip

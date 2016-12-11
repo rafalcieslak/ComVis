@@ -236,7 +236,6 @@ def harris_corners(I, sigma):
 # Input: List of tuples x,y,v where x and y are coordinates and v is the value at point
 def ANMS(pointlist, N):
     pointlist = np.asarray(pointlist)
-    print(pointlist.shape)
     radii = []
     for x,y,v,s in pointlist:
         # Find the distance to the nearest point with a higher value
