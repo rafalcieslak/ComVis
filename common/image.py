@@ -110,6 +110,25 @@ def img_transform(source_image, function, target_shape=None, constant=[0,0,0], o
     # temporarily in an optimized layout
     return pts.copy()
 
+
+def img_transform_1ch(source_image, function, target_shape=None, constant=0, order=3, mode='constant'):
+    if target_shape is None:
+        target_shape = source_image.shape
+    cx,cy = np.meshgrid(np.arange(target_shape[0]), np.arange(target_shape[1]))
+    coords = np.stack((cx,cy), axis=2).reshape((-1,2), order='F')
+    coords2 = np.fliplr(function(np.fliplr(coords)))
+    assert coords.shape == coords2.shape, ("Original coords shape %s is not equal to modified coords shape %s." % (coords.shape, coords2.shape))
+    coordsX = np.pad(coords2, ((0,0),(0,0)), mode='constant', constant_values=0)
+    # print(coordsX.T.shape)
+    pts = scipy.ndimage.map_coordinates(source_image, coordsX.T, order=order, mode=mode, cval=constant)
+    pts = pts.T
+    tshape = (target_shape[1], target_shape[0])
+    pts = pts.reshape(tshape, order='F').transpose((1,0))
+    # A copy is needed due to a bug in opencv which causes it to
+    # incorrectly track the data layout of numpy arrays which are
+    # temporarily in an optimized layout
+    return pts.copy()
+
 # Similar to img_transform, but the argument function shall return not coordinates, but values.
 def img_gen(function, target_shape=None):
     if target_shape is None:
@@ -272,7 +291,7 @@ def harris_laplace(I):
     assert(len(points) == sigma_n)
 
     print("Before selecting scale-space local maximas: %d points" % len(allpoints))
-    
+
     filtered_points = []
     # Now, filter the points to only include those that are local maximas in
     # scale space as well. For convenience, add zeroed arrays to end end
@@ -293,5 +312,11 @@ def harris_laplace(I):
                 filtered_points.append(p)
 
     print("After selecting scale-space local maximas: %d points" % len(filtered_points))
-    
+
     return filtered_points
+
+
+def decimate(image, target_size):
+    decimate_factors = (target_size[0] / image.shape[0],
+                        target_size[1] / image.shape[1])
+    return cv2.resize(image, (target_size[1], target_size[0]), interpolation=cv2.INTER_AREA)
