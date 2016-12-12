@@ -9,7 +9,7 @@ from common.image import *
 
 step_by_step_debug = False
 
-parser = argparse.ArgumentParser(description='Generate a list of features from a image file.')
+parser = argparse.ArgumentParser(description='Adds SIFT descriptors for features from a image file.')
 parser.add_argument('image_path', metavar="IMAGE", type=str, help="Path to source image file.")
 parser.add_argument('feat_path', metavar="FEATURES", type=str, help="Path to features file.")
 parser.add_argument('output_path', metavar="OUTPUT", type=str,
@@ -199,7 +199,7 @@ for i,f in enumerate(features):
 # Manually flatten descrip list
 d2 = []
 for x,y,scale,angle,DESCRIPTOR in descrips:
-    l = np.asarray([x,y,scale,angle])
+    l = np.asarray([x-PAD_SIZE,y-PAD_SIZE,scale,angle])
     d2 += [np.hstack([l,DESCRIPTOR.ravel()])]
 d2 = np.asarray(d2)
 print(d2.shape)
