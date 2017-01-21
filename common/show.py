@@ -2,6 +2,8 @@ import scipy
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
+import colorsys
+import cv2
 
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
@@ -66,3 +68,25 @@ def plot_points(data3d):
     sp.scatter(X[1:],Y[1:],Z[1:], c='b', marker='o', s=2)
     # sp.scatter(C[0], C[1], C[2], c='r', marker='x')
     plt.show()
+
+def draw_points_and_epipolar(img1, img2, p1, p2, F, zoom_factor=1.0):
+    line_width = int(1.5 / zoom_factor)
+    circle_radius = int(8 / zoom_factor)
+    circle_width = int(2/ zoom_factor)
+    rows, cols, _ = img1.shape
+    for pt1, pt2 in zip(p1, p2):
+        color = (np.random.randint(0,255)/255.0, 1.0, 1.0)
+        color = tuple(np.array(colorsys.hsv_to_rgb(*color))*255.0)
+        # Points on image 2, lines on image 1
+        cv2.circle(img2,(int(pt2[0]), int(pt2[1])),circle_radius,color,circle_width)
+        a,b,c = F @ pt1
+        x1,y1 = 0, int(-c/b)
+        x2,y2 = cols, int(-(c+a*cols)/b)
+        img2 = cv2.line(img2, (x1,y1), (x2,y2), color,line_width)
+        # Points on image 1, lines on image 2
+        cv2.circle(img1,(int(pt1[0]), int(pt1[1])),circle_radius,color,circle_width)
+        a,b,c = F.T @ pt2
+        x1,y1 = 0, int(-c/b)
+        x2,y2 = cols, int(-(c+a*cols)/b)
+        img1 = cv2.line(img1, (x1,y1), (x2,y2), color,line_width)
+    return img1, img2

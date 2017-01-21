@@ -60,3 +60,38 @@ def baseline_length(P1, P2):
     K1, R1, t1, c1 = decompose_P(P1)
     K2, R2, t2, c2 = decompose_P(P2)
     return np.sqrt(np.dot(c1 - c2, c1 - c2))
+
+def rank_reduce(A):
+    U, S, V = np.linalg.svd(A)
+    S[-1] = 0
+    return U.dot(np.diag(S)).dot(V)
+
+def rank_reduce_essential(A):
+    assert(A.shape == (3,3))
+    U, S, V = np.linalg.svd(A)
+    a, b, c = S
+    q = 0.5 * (a+b)
+    S = np.diag((q,q,0))
+    return U.dot(S).dot(V)
+
+# Make sure both p1 and p2 contain exactly 8 points.
+def calculate_fundamental(p1, p2, essential=False):
+    points = np.hstack((p1, p2))
+    # choice = np.random.choice(p1.shape[0], n, replace=False)
+    # points = points_combined[choice]
+    A = []
+    for row in points:
+        u, v, _, up, vp, _ = row
+        A.append([up*u, up*v, up,
+                  vp*u, vp*v, vp,
+                     u,    v,  1])
+    A = np.asarray(A)
+    # Solve Af=0 with least squares, constarining |f|=1
+    U, S, V = np.linalg.svd(A)
+    F = V[-1,:].reshape(3,3)
+    if essential:
+        F = rank_reduce_essential(F)
+    else:
+        F = rank_reduce(F)
+    F = F/F[2,2]
+    return F

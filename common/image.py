@@ -229,7 +229,7 @@ def find_local_maximas_with_values(image, neighbourhood_size=5, flat_treshold=0.
     # Get coordinates of the maximas
     labeled_R, n_obj = scipy.ndimage.label(maxima)
     slices = scipy.ndimage.find_objects(labeled_R)
-    print("Found %d corners" % n_obj)
+    # print("Found %d corners" % n_obj)
 
     # Sample the response function at these points
     points = []
@@ -320,3 +320,5 @@ def decimate(image, target_size):
     decimate_factors = (target_size[0] / image.shape[0],
                         target_size[1] / image.shape[1])
     return cv2.resize(image, (target_size[1], target_size[0]), interpolation=cv2.INTER_AREA)
+
+
