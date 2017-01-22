@@ -25,6 +25,7 @@ SCALE = 1.0
 RANSAC_TRESHOLD = 5
 RANSAC_SAMPLES = 1500
 show_epipolar = False
+P_TEST_POINTS = 20
 K = np.array([[2759.48, 0.00000, 1520.69],
               [0.00000, 2764.16, 1006.81],
               [0.00000, 0.00000, 1.00000]])
@@ -157,16 +158,68 @@ if show_epipolar:
 
 # Triangulate matches from first two images.
 Pi1, Pi2l = get_Ps_from_E(E)
-Pi2 = Pi2l[0] # Assume cameras facing same direction. Implicitly assume spatially ordered image sequence.
 print("Pi1:")
 show(Pi1)
-print("Pi2:")
-show(Pi2)
+print("Pi2l:")
+show(Pi2l[0])
+show(Pi2l[1])
+show(Pi2l[2])
+show(Pi2l[3])
 
-P1 = K @ Pi1
-P2 = K @ Pi2
+"""
+# Pick some points to test matrices.
+testmatches = matches[np.random.randint(0, matches.shape[0], P_TEST_POINTS)]
+tm1 = np.vstack([testmatches[:,0], testmatches[:,1], [1]*P_TEST_POINTS]).T
+tm2 = np.vstack([testmatches[:,2], testmatches[:,3], [1]*P_TEST_POINTS]).T
 
-results = np.array([triangulate(P1, P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
+print(tm1)
+
+for i in range(0,4):
+    totalz1 = totalz2 = 0;
+    for tp1, tp2 in zip(tm1, tm2):
+        testP1, testP2 = K @ Pi1, K @ Pi2l[i]
+        X = triangulate(testP1, testP2, tp1, tp2)
+        x1 = testP2 @ X
+        x2 = testP1 @ X
+        totalz1 += np.sign(x1[2])
+        totalz2 += np.sign(x2[2])
+    print("DONE")
+    print(totalz1)
+    print(totalz2)
+    if totalz1 > 0 and totalz2 > 0:
+        print("Picking P2 variant #%d" % i)
+        print("Pi2:")
+        show(Pi2l[i])
+        P1,P2 = testP1,testP2
+        break
+    if totalz1 < 0 and totalz2 < 0:
+        print("Picking P2 variant -1* #%d" % i)
+        testP2 = -testP2
+        print("Pi2:")
+        show(Pi2l[i])
+        P1,P2 = testP1,testP2
+        break
+    if i == 3:
+        print("ERROR: No Ps derived from E are valid!")
+"""
+
+# For some reason, the above doesn't work very well. Instead we'll just pick a
+# martix that has positive scale on all axes. This may flip the orientation of
+# the model, but whaterver, who cares.
+for i in range(0,4):
+    testP1, testP2 = Pi1, Pi2l[i]
+    if (np.sign(testP2[0,0]) == np.sign(testP2[1,1]) and
+        np.sign(testP2[1,1]) == np.sign(testP2[2,2])):
+        testP2 *= np.sign(testP2[0,0])
+        print("Picking P2 variant #%d" % i)
+        print("Pi2:")
+        show(testP2)
+        P1,P2 = K @ testP1, K @ testP2
+        break             
+    if i == 3:
+        print("ERROR: No Ps derived from E are valid!")
+
+results = np.array([triangulate(P1,P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
 results = [(x/w,y/w,z/w) for x,y,z,w in results]
 
 print("Saving results...")
