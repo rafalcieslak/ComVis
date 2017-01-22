@@ -1,6 +1,7 @@
 import scipy
 import scipy.linalg
 import numpy as np
+from .show import *
 
 # Decomposes P into: K - intrisic matrix, R - rotation matrix, T -
 # world origin coordinates in camera space, C - camera origin
@@ -95,3 +96,54 @@ def calculate_fundamental(p1, p2, essential=False):
         F = rank_reduce(F)
     F = F/F[2,2]
     return F
+
+# As hinted by http://users.cecs.anu.edu.au/~hartley/Papers/CVPR99-tutorial/tut_4up.pdf
+# around page 11
+def get_Ps_from_F_alternative(F):
+    U,S,Vt = np.linalg.svd(F)
+    u3 = U[2].reshape((3,1))
+    
+    W = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 1]])
+    Z = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 0]])
+    P1 = np.asarray([[1,0,0,0],
+                     [0,1,0,0],
+                     [0,0,1,0]])
+    UZUt = U @ Z @ U.T
+    UZDVt = U @ Z @ np.diag(S) @ Vt
+    t = np.array([UZUt[2,1], UZUt[0,2], UZUt[1,0]])
+    M = UZDVt
+    P2 = np.hstack([M,t.reshape(3,1)])
+    return P1, [P2]
+
+def get_Ps_from_E(E):
+    U,S,Vt = np.linalg.svd(E)
+    u3 = U[2].reshape((3,1))
+    
+    W = np.asarray([[0, -1, 0],
+                    [1,  0, 0],
+                    [0,  0, 1]])
+    P1 = np.asarray([[1,0,0,0],
+                     [0,1,0,0],
+                     [0,0,1,0]])
+    P2_1 = np.hstack([U @ W   @ Vt,  u3])
+    P2_2 = np.hstack([U @ W   @ Vt, -u3])
+    P2_3 = np.hstack([U @ W.T @ Vt,  u3])
+    P2_4 = np.hstack([U @ W.T @ Vt, -u3])
+    return P1, [P2_1, P2_2, P2_3, P2_4]
+
+def triangulate(P1, P2, p1, p2):
+    x1,y1,_ = p1/p1[2]
+    x2,y2,_ = p2/p2[2]
+    A1 = x1*P1[2,:] - P1[0,:]
+    A2 = y1*P1[2,:] - P1[1,:]
+    A3 = x2*P2[2,:] - P2[0,:]
+    A4 = y2*P2[2,:] - P2[1,:]
+    A = np.vstack([A1,A2,A3,A4])
+    U,S,V = np.linalg.svd(A)
+    X = V[-1,:]
+    q = A @ X
+    return X

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import colorsys
 import cv2
+from plyfile import PlyData, PlyElement
 
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
@@ -90,3 +91,9 @@ def draw_points_and_epipolar(img1, img2, p1, p2, F, zoom_factor=1.0):
         x2,y2 = cols, int(-(c+a*cols)/b)
         img1 = cv2.line(img1, (x1,y1), (x2,y2), color,line_width)
     return img1, img2
+
+
+def save_to_ply(points, filename):
+    points = np.array(points, dtype=[('x','f4'), ('y','f4'),('z', 'f4')])
+    el = PlyElement.describe(points, 'vertex')
+    PlyData([el]).write(filename)

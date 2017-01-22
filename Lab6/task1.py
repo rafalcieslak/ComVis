@@ -24,7 +24,7 @@ MATCHES = 500
 SCALE = 1.0
 RANSAC_TRESHOLD = 5
 RANSAC_SAMPLES = 1500
-show_epipolar = True
+show_epipolar = False
 K = np.array([[2759.48, 0.00000, 1520.69],
               [0.00000, 2764.16, 1006.81],
               [0.00000, 0.00000, 1.00000]])
@@ -128,6 +128,7 @@ for i in range(0, RANSAC_SAMPLES):
 E, F = best_E_F
 inliers_mask = best_mask
 print("Best E has %d/%d inliers." % (best_inliers, p1.shape[0]))
+#   Uncomment this to calculate E again, usign ALL inliers.
 #E = calculate_fundamental(p1_normalized[inliers_mask], p2_normalized[inliers_mask], essential=True)
 #F = K_inv.T @ E @ K_inv
 #F = F/F[2,2]
@@ -135,7 +136,15 @@ print("Best E has %d/%d inliers." % (best_inliers, p1.shape[0]))
 print("This is the best E:")
 show(E)
 
+# Remove outliers from matches set.
+matches = matches[inliers_mask]
+print("Using %d matches." % matches.shape[0])
+
+p1 = pointlist_to_homog(matches[:,0:2])
+p2 = pointlist_to_homog(matches[:,2:4])
+
 if show_epipolar:
+    choice = np.random.choice(np.arange(p1.shape[0]), 25, replace=False)
     zoom_factor = 0.3
     img1, img2 = draw_points_and_epipolar(image1.copy(), image2.copy(), p1[choice], p2[choice], F, zoom_factor)
     img1 = zoom_3ch(img1,zoom_factor)
@@ -145,3 +154,20 @@ if show_epipolar:
     # Wait 20ms for Esc key, repeat.
     while cv2.waitKey(20) & 0xff != 27:
         pass
+
+# Triangulate matches from first two images.
+Pi1, Pi2l = get_Ps_from_E(E)
+Pi2 = Pi2l[0] # Assume cameras facing same direction. Implicitly assume spatially ordered image sequence.
+print("Pi1:")
+show(Pi1)
+print("Pi2:")
+show(Pi2)
+
+P1 = K @ Pi1
+P2 = K @ Pi2
+
+results = np.array([triangulate(P1, P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
+results = [(x/w,y/w,z/w) for x,y,z,w in results]
+
+print("Saving results...")
+save_to_ply(results, "out.ply")
