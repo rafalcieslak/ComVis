@@ -36,6 +36,8 @@ image2 = scipy.ndimage.imread(args.image2)[:,:,0:3]
 image1 = zoom_3ch(image1,SCALE)
 image2 = zoom_3ch(image2,SCALE)
 
+imagelist = [image1, image2]
+
 def line_point_distance(a,b,c,x,y):
     n = np.abs(a*x + b*y + c)
     d = np.sqrt(a*a + b*b)
@@ -220,7 +222,32 @@ for i in range(0,4):
         print("ERROR: No Ps derived from E are valid!")
 
 results = np.array([triangulate(P1,P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
-results = [(x/w,y/w,z/w) for x,y,z,w in results]
+
+print("Initializing pointcould...")
+# Convert results to a pointcloud
+pointcloud = []
+for i in range(0, matches.shape[0]):
+    X = results[i]
+    match = matches[i]
+    matchlist = [(0, match[0], match[1]), (1, match[2], match[3])]
+    pointcloud += [(X, matchlist)]
+
+
+def matchlist_to_color(matchlist):
+    if len(matchlist) == 0:
+        print("ERROR: Empty matchlist")
+        return (0,0,0)
+    avg = np.array([0,0,0])
+    for match in matchlist:
+        avg += imagelist[match[0]][match[2], match[1]]
+    return avg/len(matchlist)
+
+print("Extracting data from pointcloud...")
+results = []
+for (x,y,z), matchlist in pointcloud:
+    r,g,b = matchlist_to_color(matchlist)
+    results += [(x,y,z,r,g,b)]    
+show(np.array(results))
 
 print("Saving results...")
 save_to_ply(results, "out.ply")

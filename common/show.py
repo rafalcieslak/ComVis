@@ -94,6 +94,6 @@ def draw_points_and_epipolar(img1, img2, p1, p2, F, zoom_factor=1.0):
 
 
 def save_to_ply(points, filename):
-    points = np.array(points, dtype=[('x','f4'), ('y','f4'),('z', 'f4')])
+    points = np.array(points, dtype=[('x','f4'), ('y','f4'),('z', 'f4'),('red', 'u1'),('green', 'u1'),('blue', 'u1')])
     el = PlyElement.describe(points, 'vertex')
     PlyData([el]).write(filename)

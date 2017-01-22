@@ -147,5 +147,5 @@ def triangulate(P1, P2, p1, p2):
     A = np.vstack([A1,A2,A3,A4])
     U,S,V = np.linalg.svd(A)
     X = V[-1,:]
-    q = A @ X
-    return X
+    X /= X[3]
+    return X[0:3]
