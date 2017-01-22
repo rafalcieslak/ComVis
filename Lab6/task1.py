@@ -10,8 +10,9 @@ from common.SIFT import *
 from common.matrices import *
 
 parser = argparse.ArgumentParser(description='Lab 6 task 1.')
-parser.add_argument('image1', metavar="IMAGE1", type=str, help="Path to image 1.")
-parser.add_argument('image2', metavar="IMAGE2", type=str, help="Path to image 2.")
+parser.add_argument('image1', metavar="IMG1", type=str, help="Path to image 1.")
+parser.add_argument('image2', metavar="IMG2", type=str, help="Path to image 2.")
+parser.add_argument('IMAGES', metavar="IMG", nargs="*", default=[], type=str, help="Subsequent images.")
 parser.add_argument('--dbg', '-d', action='store_true', help="Debug mode.")
     
 try:
@@ -30,13 +31,15 @@ K = np.array([[2759.48, 0.00000, 1520.69],
               [0.00000, 2764.16, 1006.81],
               [0.00000, 0.00000, 1.00000]])
 
-# Open image files
-image1 = scipy.ndimage.imread(args.image1)[:,:,0:3]
-image2 = scipy.ndimage.imread(args.image2)[:,:,0:3]
-image1 = zoom_3ch(image1,SCALE)
-image2 = zoom_3ch(image2,SCALE)
+image_files = [args.image1, args.image2] + args.IMAGES
 
-imagelist = [image1, image2]
+# Open image files
+print("Opening image files...")
+images = []
+for image_file in image_files:
+    image = scipy.ndimage.imread(image_file)[:,:,0:3]
+    image = zoom_3ch(image,SCALE)
+    images += [image]
 
 def line_point_distance(a,b,c,x,y):
     n = np.abs(a*x + b*y + c)
@@ -82,13 +85,18 @@ def describe_cached(image, name):
         np.savetxt(cachefile, descr)
         return descr
 
-described1 = describe_cached(image1, args.image1)
-described2 = describe_cached(image2, args.image2)
 
-print("Matching")
+described = [describe_cached(image, image_file) for image, image_file in zip(images, image_files)]
+    
+# Start with first two images.
+image1 = images[0]
+image2 = images[1]
+described1 = described[0]
+described2 = described[1]
+
+print("Matching first two images.")
 matches = match2D(described1, described2, MATCHES)
 matches = np.array(matches)
-# print(matches)
 
 K_inv = np.linalg.inv(K)
 
@@ -162,11 +170,6 @@ if show_epipolar:
 Pi1, Pi2l = get_Ps_from_E(E)
 print("Pi1:")
 show(Pi1)
-print("Pi2l:")
-show(Pi2l[0])
-show(Pi2l[1])
-show(Pi2l[2])
-show(Pi2l[3])
 
 """
 # Pick some points to test matrices.
@@ -221,9 +224,11 @@ for i in range(0,4):
     if i == 3:
         print("ERROR: No Ps derived from E are valid!")
 
-results = np.array([triangulate(P1,P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
+P_matrices = {0: P1, 1: P2}
+Pi_matrices = {0: testP1, 1: testP2}
 
 print("Initializing pointcould...")
+results = np.array([triangulate(P1,P2,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
 # Convert results to a pointcloud
 pointcloud = []
 for i in range(0, matches.shape[0]):
@@ -232,22 +237,34 @@ for i in range(0, matches.shape[0]):
     matchlist = [(0, match[0], match[1]), (1, match[2], match[3])]
     pointcloud += [(X, matchlist)]
 
+# TODO: subsequent images.
+for i in range(2, len(image_files)):
+    print("Now adding image", image_files[i])
 
-def matchlist_to_color(matchlist):
-    if len(matchlist) == 0:
-        print("ERROR: Empty matchlist")
-        return (0,0,0)
-    avg = np.array([0,0,0])
-    for match in matchlist:
-        avg += imagelist[match[0]][match[2], match[1]]
-    return avg/len(matchlist)
+    # Start by preparing matches between this and previous image.
+    print("Matching with previous image.")
+    matches = match2D(described[i-1], described[i], MATCHES)
+    matches = np.array(matches)
+    p1 = pointlist_to_homog(matches[:,0:2])
+    p2 = pointlist_to_homog(matches[:,2:4])
+    p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
+    p2_normalized = np.einsum('xy,zy->zx', K_inv, p2)
 
+    # Now search for a good Pi.
+    
+print("Total points in pointcloud:", len(pointcloud))    
 print("Extracting data from pointcloud...")
 results = []
 for (x,y,z), matchlist in pointcloud:
-    r,g,b = matchlist_to_color(matchlist)
-    results += [(x,y,z,r,g,b)]    
-show(np.array(results))
+    if len(matchlist) == 0:
+        print("ERROR: Empty matchlist")
+        results += [(x,y,z,0,0,0)]
+        continue
+    avg = np.array([0,0,0])
+    for match in matchlist:
+        avg += images[match[0]][int(match[2]), int(match[1])]
+    r,g,b = avg/len(matchlist)
+    results += [(x,y,z,r,g,b)]
 
 print("Saving results...")
 save_to_ply(results, "out.ply")

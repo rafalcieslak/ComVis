@@ -121,7 +121,6 @@ def get_Ps_from_F_alternative(F):
 
 def get_Ps_from_E(E):
     U,S,Vt = np.linalg.svd(E)
-    show(U)
     # This was U[2], but that would be wrong, right?
     u3 = U[:,2].reshape((3,1))
     
