@@ -27,6 +27,7 @@ RANSAC_TRESHOLD = 5
 RANSAC_SAMPLES = 1500
 show_epipolar = False
 P_TEST_POINTS = 20
+CORRESP_2D_3D = 8
 K = np.array([[2759.48, 0.00000, 1520.69],
               [0.00000, 2764.16, 1006.81],
               [0.00000, 0.00000, 1.00000]])
@@ -41,6 +42,8 @@ for image_file in image_files:
     image = zoom_3ch(image,SCALE)
     images += [image]
 
+images[-1][:,:] = np.array([0,255,0])
+    
 def line_point_distance(a,b,c,x,y):
     n = np.abs(a*x + b*y + c)
     d = np.sqrt(a*a + b*b)
@@ -215,7 +218,9 @@ for i in range(0,4):
     testP1, testP2 = Pi1, Pi2l[i]
     if (np.sign(testP2[0,0]) == np.sign(testP2[1,1]) and
         np.sign(testP2[1,1]) == np.sign(testP2[2,2])):
-        testP2 *= np.sign(testP2[0,0])
+        q = np.sign(testP2[0,0])
+        # testP2 *= q
+        # testP1 *= -q
         print("Picking P2 variant #%d" % i)
         print("Pi2:")
         show(testP2)
@@ -234,23 +239,120 @@ pointcloud = []
 for i in range(0, matches.shape[0]):
     X = results[i]
     match = matches[i]
-    matchlist = [(0, match[0], match[1]), (1, match[2], match[3])]
-    pointcloud += [(X, matchlist)]
+    matchlist = [(0, int(match[0]), int(match[1])), (1, int(match[2]), int(match[3]))]
+    pointcloud += [[X, matchlist]]
 
-# TODO: subsequent images.
 for i in range(2, len(image_files)):
     print("Now adding image", image_files[i])
 
     # Start by preparing matches between this and previous image.
     print("Matching with previous image.")
     matches = match2D(described[i-1], described[i], MATCHES)
-    matches = np.array(matches)
+    matches = np.array(matches).astype(np.int)
     p1 = pointlist_to_homog(matches[:,0:2])
     p2 = pointlist_to_homog(matches[:,2:4])
     p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
     p2_normalized = np.einsum('xy,zy->zx', K_inv, p2)
+    
+    # Create a list of correspondences between 2D points on image i and 3D
+    # points in the pointcloud, according to matches.
+    matched2D = []
+    matched3D = []
+    new2D = []
+    def matchlist_has_entry(matchlist, i, x, y):
+        for m in matchlist:
+            if m[0] == i and m[1] == x and m[2] == y:
+                print(m)
+                return True
+        return False
+    for xp,yp,xc,yc in matches:
+        print("searching for:", (xp,yp,xc,yc))
+        gen = ((q,p) for q,p in enumerate(pointcloud) if matchlist_has_entry(p[1], i-1, xp, yp))
+        q,p = next(gen, (-1,None))
+        if p is None:
+            new2D += [(xp,yp,xc,yc)]
+        else:
+            print("found:", p)
+            matched2D += [(xc, yc)]
+            matched3D += [p[0]]
+            # Add to matchlist
+            pointcloud[q][1] += [(i, xc, yc)]
+    matched2D = np.array(matched2D).astype(np.int)
+    matched3D = np.array(matched3D)
+    new2D = np.array(new2D).astype(np.int)
+    print(matched2D.shape)
+    print(matched3D.shape)
+    print(new2D.shape)
+    
+    matched2D_h = pointlist_to_homog(matched2D[:,0:2])
+    matched3D_h = pointlist_to_homog(matched3D[:,0:3])
+    matched2D_normalized = np.einsum('xy,zy->zx', K_inv, matched2D_h)
+    matched2D_normalized = pointlist_from_homog(matched2D_normalized)
 
-    # Now search for a good Pi.
+    best_r = 1000
+    best_inliers = 0
+    for n in range(0,1000):
+        # Choose randomly some 2d-3d correspondences.
+        choice = np.random.choice(np.arange(len(matched2D)), CORRESP_2D_3D, replace=False)
+        Pinew = estimate_P(matched2D_normalized[choice], matched3D[choice])
+    
+        r = calculate_residual(matched2D_normalized[choice], matched3D[choice], Pinew)
+
+        # Use this P to reproject all points.
+        proj = project(matched3D, Pinew)
+        # Calculate distances
+        d = np.sqrt(np.power(proj - matched2D_normalized,2).sum(axis=1))
+        inliers_mask = d < 0.001
+        inliers = inliers_mask.sum()
+    
+        if inliers > best_inliers:
+            best_inliers = inliers
+            best_Pi = Pinew
+            best_inliers_mask = inliers_mask
+            best_choice = choice
+    print("Most inliers:", best_inliers)
+    show(best_Pi)
+    inliers_mask = best_inliers_mask
+    
+    print("Best P has %d/%d inliers." % (inliers_mask.sum(), matched3D.shape[0]))
+
+    #det = np.linalg.det(best_P[0:3,0:3])
+    #print(det)
+    #best_P /= det
+
+    best_Pi /= -best_Pi[0,0]
+    
+    #K, _, _, _ = decompose_P(best_P)
+    #best_P = np.linalg.inv(K) @ best_P
+    #show(best_P)
+    
+    # Use this P to reproject all points.
+    proj = project(matched3D, best_Pi)
+    # Calculate distances
+    d = np.sqrt(np.power(proj - matched2D_normalized,2).sum(axis=1))
+    inliers_mask = d < 0.001
+    inliers = inliers_mask.sum()
+
+    print("inliers2:", inliers)
+
+    Pi_matrices[i] = best_Pi
+    P_matrices[i] = K @ best_Pi
+
+    P = K @ best_Pi
+
+    P_prev = P_matrices[i-1]
+    # Now, use that P with P_prev to triangulate some new points to the pointcloud.
+
+    # TODO: Update exising matchlists for old matches!
+    p1 = pointlist_to_homog(new2D[:,0:2])
+    p2 = pointlist_to_homog(new2D[:,2:4])
+    #pointcloud = [] # TODO remove this line
+    results = np.array([triangulate(P_prev,P,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
+    for n in range(0, p1.shape[0]):
+        X = results[n]
+        match = new2D[n]
+        matchlist = [(i-1, int(match[0]), int(match[1])), (i, int(match[2]), int(match[3]))]
+        pointcloud += [[X, matchlist]]
     
 print("Total points in pointcloud:", len(pointcloud))    
 print("Extracting data from pointcloud...")
@@ -265,6 +367,16 @@ for (x,y,z), matchlist in pointcloud:
         avg += images[match[0]][int(match[2]), int(match[1])]
     r,g,b = avg/len(matchlist)
     results += [(x,y,z,r,g,b)]
+
+# Append camera positions
+k=0
+for i in range(0,len(images)):
+    P = P_matrices[i]
+    K, R, T, C = decompose_P(P)
+    print(K)
+    print(T)
+    results += [(T[0],T[1],T[2],250*k/len(P),0,0)]
+    k+=1
 
 print("Saving results...")
 save_to_ply(results, "out.ply")

@@ -129,7 +129,7 @@ def get_Ps_from_E(E):
                     [0,  0, 1]])
     P1 = np.asarray([[1,0,0,0],
                      [0,1,0,0],
-                     [0,0,1,0]])
+                     [0,0,1,0]]).astype(np.float)
     P2_1 = np.hstack([U @ W   @ Vt,  u3])
     P2_2 = np.hstack([U @ W   @ Vt, -u3])
     P2_3 = np.hstack([U @ W.T @ Vt,  u3])
@@ -148,3 +148,65 @@ def triangulate(P1, P2, p1, p2):
     X = V[-1,:]
     X /= X[3]
     return X[0:3]
+
+
+# Estimates projection matrix based on corresionding 3d points in
+# world space and 2d points on image plane
+def estimate_P(data2d, data3d):
+    #show(data2d)
+    #show(data3d)
+    n = data2d.shape[0]
+    assert(n == data3d.shape[0])
+    # To homogenous
+    data2dH = np.hstack((data2d,np.ones((n,1))))
+    data3dH = np.hstack((data3d,np.ones((n,1))))
+    # Prepare matrix for linear system
+    A1 = np.zeros((2*n,4))
+    A2 = np.zeros((2*n,4))
+    A1[0::2] = data3dH
+    A2[1::2] = data3dH
+    A3 = -1*(A1+A2)*data2d.reshape((2*n,1))
+    A = np.hstack((A1, A2, A3))
+    # Use A as the matrix of system Ax = 0, solve
+    U, S, V = np.linalg.svd(A)
+    P = V[-1,:].reshape(3,4)
+    return P
+
+# Performs a projection of a point set using the given matrix
+def project(data3d, P):
+    n = data3d.shape[0]
+    # To homogenous
+    data3dH = np.hstack((data3d,np.ones((n,1))))
+    # Apply P to each 3d point
+    proj = np.einsum('ab,cb->ca',P, data3dH)
+    # Back from homogenous
+    proj = (proj.T / proj[:,-1]).T[:,0:2]
+    return proj
+
+# Computes the total residual error of projection between
+# corresponding sets of 3d and 2d points with a specified projection
+# matrix
+def calculate_residual(data2d, data3d, P):
+    proj = project(data3d, P)
+    # Calculate distances
+    d = np.sqrt(np.power(proj - data2d,2).sum(axis=1))
+    return d.sum()
+
+
+# Decomposes P into: K - intrisic matrix, R - rotation matrix, T -
+# world origin coordinates in camera space, C - camera origin
+# coordinates in world space
+def decompose_P(P):
+    M = P[:,0:3]
+    mMC = P[:,3:4].reshape((3))
+    C = -(np.linalg.inv(M)).dot(mMC)
+    K, R = scipy.linalg.rq(M)
+    
+    # Optional: Correct axis orientation
+    U = np.diag(np.sign(np.diag(K)))
+    K = K.dot(U)
+    R = U.dot(R)
+    
+    #T = -R.dot(C)
+    T = R.dot(C)
+    return K, R, T, C
