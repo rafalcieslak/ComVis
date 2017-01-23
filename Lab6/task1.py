@@ -26,11 +26,16 @@ SCALE = 1.0
 RANSAC_TRESHOLD = 5
 RANSAC_SAMPLES = 1500
 show_epipolar = False
+make_last_image_green = False
 P_TEST_POINTS = 20
 CORRESP_2D_3D = 8
 K = np.array([[2759.48, 0.00000, 1520.69],
               [0.00000, 2764.16, 1006.81],
               [0.00000, 0.00000, 1.00000]])
+
+print("Note: Using K = ")
+show(K)
+K_inv = np.linalg.inv(K)
 
 image_files = [args.image1, args.image2] + args.IMAGES
 
@@ -42,7 +47,8 @@ for image_file in image_files:
     image = zoom_3ch(image,SCALE)
     images += [image]
 
-images[-1][:,:] = np.array([0,255,0])
+if make_last_image_green:
+    images[-1][:,:] = np.array([0,255,0])
     
 def line_point_distance(a,b,c,x,y):
     n = np.abs(a*x + b*y + c)
@@ -89,6 +95,53 @@ def describe_cached(image, name):
         return descr
 
 
+# Returns (filtered matches, E).
+def ransac_for_E(matches):
+    p1 = pointlist_to_homog(matches[:,0:2])
+    p2 = pointlist_to_homog(matches[:,2:4])
+
+    p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
+    p2_normalized = np.einsum('xy,zy->zx', K_inv, p2)
+
+    print("Running RANSAC search for best E.")
+    best_inliers = 0
+    for i in range(0, RANSAC_SAMPLES):
+        # Pick 8 indices at random and compute fundamental matrix
+        choice = np.random.choice(np.arange(p1.shape[0]), 10, replace=False)
+        E = calculate_fundamental(p1_normalized[choice], p2_normalized[choice], essential=True)
+        F = K_inv.T @ E @ K_inv
+        F = F/F[2,2]
+
+        # Count outliers.
+        inliers = []
+        for pt1, pt2 in zip(p1, p2):
+            a,b,c = F @ pt1
+            d1 = line_point_distance(a,b,c, pt2[0],pt2[1])
+            a,b,c = F.T @ pt2
+            d2 = line_point_distance(a,b,c, pt1[0],pt1[1])
+            q = d1 < RANSAC_TRESHOLD and d2 < RANSAC_TRESHOLD
+            inliers += [q]
+        inliers_mask = np.array(inliers)
+        inliers = inliers_mask.sum()
+        #print("Inliers: ", inliers)
+
+        if inliers > best_inliers:
+            best_inliers = inliers
+            best_E_F = (E,F)
+            best_mask = inliers_mask
+
+    E, F = best_E_F
+    inliers_mask = best_mask
+    print("Best E has %d/%d inliers." % (best_inliers, p1.shape[0]))
+    #   Uncomment this to calculate E again, usign ALL inliers.
+    #E = calculate_fundamental(p1_normalized[inliers_mask], p2_normalized[inliers_mask], essential=True)
+    #F = K_inv.T @ E @ K_inv
+    #F = F/F[2,2]
+
+    # Remove outliers from matches set.
+    matches = matches[inliers_mask]
+    return matches, E
+
 described = [describe_cached(image, image_file) for image, image_file in zip(images, image_files)]
     
 # Start with first two images.
@@ -101,59 +154,13 @@ print("Matching first two images.")
 matches = match2D(described1, described2, MATCHES)
 matches = np.array(matches)
 
-K_inv = np.linalg.inv(K)
-
-print("Using K:")
-show(K)
-
-p1 = pointlist_to_homog(matches[:,0:2])
-p2 = pointlist_to_homog(matches[:,2:4])
-
-p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
-p2_normalized = np.einsum('xy,zy->zx', K_inv, p2)
-
-print("Running RANSAC search for best E.")
-best_inliers = 0
-for i in range(0, RANSAC_SAMPLES):
-    # Pick 8 indices at random and compute fundamental matrix
-    choice = np.random.choice(np.arange(p1.shape[0]), 10, replace=False)
-    E = calculate_fundamental(p1_normalized[choice], p2_normalized[choice], essential=True)
-    F = K_inv.T @ E @ K_inv
-    F = F/F[2,2]
-
-    # Count outliers.
-    inliers = []
-    for pt1, pt2 in zip(p1, p2):
-        a,b,c = F @ pt1
-        d1 = line_point_distance(a,b,c, pt2[0],pt2[1])
-        a,b,c = F.T @ pt2
-        d2 = line_point_distance(a,b,c, pt1[0],pt1[1])
-        q = d1 < RANSAC_TRESHOLD and d2 < RANSAC_TRESHOLD
-        inliers += [q]
-    inliers_mask = np.array(inliers)
-    inliers = inliers_mask.sum()
-    #print("Inliers: ", inliers)
-
-    if inliers > best_inliers:
-        best_inliers = inliers
-        best_E_F = (E,F)
-        best_mask = inliers_mask
-
-E, F = best_E_F
-inliers_mask = best_mask
-print("Best E has %d/%d inliers." % (best_inliers, p1.shape[0]))
-#   Uncomment this to calculate E again, usign ALL inliers.
-#E = calculate_fundamental(p1_normalized[inliers_mask], p2_normalized[inliers_mask], essential=True)
-#F = K_inv.T @ E @ K_inv
-#F = F/F[2,2]
-
+# Figure out a good E with RANSAC, and filter out outlier matches.
+matches, E = ransac_for_E(matches)
+    
 print("This is the best E:")
 show(E)
 
-# Remove outliers from matches set.
-matches = matches[inliers_mask]
 print("Using %d matches." % matches.shape[0])
-
 p1 = pointlist_to_homog(matches[:,0:2])
 p2 = pointlist_to_homog(matches[:,2:4])
 
@@ -174,53 +181,14 @@ Pi1, Pi2l = get_Ps_from_E(E)
 print("Pi1:")
 show(Pi1)
 
-"""
-# Pick some points to test matrices.
-testmatches = matches[np.random.randint(0, matches.shape[0], P_TEST_POINTS)]
-tm1 = np.vstack([testmatches[:,0], testmatches[:,1], [1]*P_TEST_POINTS]).T
-tm2 = np.vstack([testmatches[:,2], testmatches[:,3], [1]*P_TEST_POINTS]).T
-
-print(tm1)
-
-for i in range(0,4):
-    totalz1 = totalz2 = 0;
-    for tp1, tp2 in zip(tm1, tm2):
-        testP1, testP2 = K @ Pi1, K @ Pi2l[i]
-        X = triangulate(testP1, testP2, tp1, tp2)
-        x1 = testP2 @ X
-        x2 = testP1 @ X
-        totalz1 += np.sign(x1[2])
-        totalz2 += np.sign(x2[2])
-    print("DONE")
-    print(totalz1)
-    print(totalz2)
-    if totalz1 > 0 and totalz2 > 0:
-        print("Picking P2 variant #%d" % i)
-        print("Pi2:")
-        show(Pi2l[i])
-        P1,P2 = testP1,testP2
-        break
-    if totalz1 < 0 and totalz2 < 0:
-        print("Picking P2 variant -1* #%d" % i)
-        testP2 = -testP2
-        print("Pi2:")
-        show(Pi2l[i])
-        P1,P2 = testP1,testP2
-        break
-    if i == 3:
-        print("ERROR: No Ps derived from E are valid!")
-"""
-
-# For some reason, the above doesn't work very well. Instead we'll just pick a
-# martix that has positive scale on all axes. This may flip the orientation of
-# the model, but whaterver, who cares.
+# For some reason, testing point direction relative to camera does not work
+# well. Instead we'll just pick a martix that has positive scale on all
+# axes. This may flip the orientation of the model, but whaterver, who cares.
 for i in range(0,4):
     testP1, testP2 = Pi1, Pi2l[i]
     if (np.sign(testP2[0,0]) == np.sign(testP2[1,1]) and
         np.sign(testP2[1,1]) == np.sign(testP2[2,2])):
         q = np.sign(testP2[0,0])
-        # testP2 *= q
-        # testP1 *= -q
         print("Picking P2 variant #%d" % i)
         print("Pi2:")
         show(testP2)
@@ -249,6 +217,12 @@ for i in range(2, len(image_files)):
     print("Matching with previous image.")
     matches = match2D(described[i-1], described[i], MATCHES)
     matches = np.array(matches).astype(np.int)
+
+    print("All matches: ", matches.shape[0])
+
+    matches, E = ransac_for_E(matches)
+    print("Filtered matches: ", matches.shape[0])
+    
     p1 = pointlist_to_homog(matches[:,0:2])
     p2 = pointlist_to_homog(matches[:,2:4])
     p1_normalized = np.einsum('xy,zy->zx', K_inv, p1)
@@ -262,17 +236,16 @@ for i in range(2, len(image_files)):
     def matchlist_has_entry(matchlist, i, x, y):
         for m in matchlist:
             if m[0] == i and m[1] == x and m[2] == y:
-                print(m)
                 return True
         return False
     for xp,yp,xc,yc in matches:
-        print("searching for:", (xp,yp,xc,yc))
+        #print("searching for:", (xp,yp,xc,yc))
         gen = ((q,p) for q,p in enumerate(pointcloud) if matchlist_has_entry(p[1], i-1, xp, yp))
         q,p = next(gen, (-1,None))
         if p is None:
             new2D += [(xp,yp,xc,yc)]
         else:
-            print("found:", p)
+            #print("found:", p)
             matched2D += [(xc, yc)]
             matched3D += [p[0]]
             # Add to matchlist
@@ -343,10 +316,8 @@ for i in range(2, len(image_files)):
     P_prev = P_matrices[i-1]
     # Now, use that P with P_prev to triangulate some new points to the pointcloud.
 
-    # TODO: Update exising matchlists for old matches!
     p1 = pointlist_to_homog(new2D[:,0:2])
     p2 = pointlist_to_homog(new2D[:,2:4])
-    #pointcloud = [] # TODO remove this line
     results = np.array([triangulate(P_prev,P,p1_,p2_) for p1_, p2_ in zip(p1,p2)])
     for n in range(0, p1.shape[0]):
         X = results[n]
@@ -375,7 +346,7 @@ for i in range(0,len(images)):
     K, R, T, C = decompose_P(P)
     print(K)
     print(T)
-    results += [(T[0],T[1],T[2],250*k/len(P),0,0)]
+    results += [(-T[0],T[1],T[2],255,0,0)]
     k+=1
 
 print("Saving results...")
