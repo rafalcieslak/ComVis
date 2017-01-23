@@ -20,11 +20,11 @@ try:
 except SystemExit:
     sys.exit(0)
 
-TAKE = 800
-MATCHES = 500
+TAKE = 900
+MATCHES = 600
 SCALE = 1.0
 RANSAC_TRESHOLD = 5
-RANSAC_SAMPLES = 1500
+RANSAC_SAMPLES = 4500
 show_epipolar = False
 make_last_image_green = False
 P_TEST_POINTS = 20
